@@ -77,7 +77,7 @@ function registerRepoListener(repo: any, context: vscode.ExtensionContext) {
   }
 
   context.subscriptions.push(
-    repo.state.onDidChange(() => {
+    repo.state.onDidChange(async () => {
       const currentCommit = repo.state.HEAD?.commit;
       const lastCommit = lastCommits.get(repoUri);
 
@@ -87,6 +87,25 @@ function registerRepoListener(repo: any, context: vscode.ExtensionContext) {
         // Only trigger sync if we actually had a previous commit recorded
         // (prevents trigger on initial Git resolution during startup)
         if (lastCommit !== undefined) {
+          // Find a relevant workspace folder for the repository to get scope-specific config
+          const repoRoot = repo.rootUri.fsPath;
+          const workspaceFolder = vscode.workspace.workspaceFolders?.find((folder) => repoRoot.startsWith(folder.uri.fsPath) || folder.uri.fsPath.startsWith(repoRoot));
+
+          const config = Config.load(workspaceFolder?.uri);
+
+          if (config.triggerOnCommit === "manual") {
+            logger.log(`New commit detected in ${repo.rootUri.fsPath}, but triggerOnCommit is "manual". Skipping automatic sync.`);
+            return;
+          }
+
+          if (config.triggerOnCommit === "ask") {
+            const result = await vscode.window.showInformationMessage(`New commit detected in ${repo.rootUri.fsPath}. Update documentation?`, "Yes", "No");
+            if (result !== "Yes") {
+              logger.log(`New commit detected in ${repo.rootUri.fsPath}, but user chose not to sync.`);
+              return;
+            }
+          }
+
           logger.log(`New commit detected in ${repo.rootUri.fsPath}: ${currentCommit}. Triggering sync.`);
           syncDocs(repoUri, true); // Use repoUri instead of unstable index
         } else {

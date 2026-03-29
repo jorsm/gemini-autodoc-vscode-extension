@@ -12,6 +12,7 @@ export interface Config {
   thinkingLevel: string;
   mappings: Mapping[];
   contextFiles: string[];
+  triggerOnCommit: "always" | "ask" | "manual";
   apiKey?: string;
   googleCloudProjectId?: string;
   googleCloudRegion: string;
@@ -27,6 +28,7 @@ export class ConfigLoader {
       thinkingLevel: config.get("thinkingLevel", "high"),
       mappings: config.get("mappings", []),
       contextFiles: config.get("contextFiles", ["README.md"]),
+      triggerOnCommit: config.get("triggerOnCommit", "always"),
       apiKey: config.get("apiKey", ""),
       googleCloudProjectId: config.get("googleCloudProjectId", ""),
       googleCloudRegion: config.get("googleCloudRegion", "global"),
