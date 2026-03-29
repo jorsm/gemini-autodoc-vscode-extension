@@ -28,9 +28,17 @@ export class DocGenerator {
   }
 
   async updateDocs(sourceFiles: string[], docTarget: string, gitContext?: GitContext): Promise<void> {
-    const absoluteDocTarget = path.resolve(this.workspaceFolder.uri.fsPath, docTarget);
+    // Multi-root handling: check if docTarget starts with folder name and strip it
+    let relativeDocTarget = docTarget;
+    const folderPrefix = this.workspaceFolder.name + "/";
+    if (docTarget.startsWith(folderPrefix)) {
+      relativeDocTarget = docTarget.substring(folderPrefix.length);
+    }
+
+    const absoluteDocTarget = path.resolve(this.workspaceFolder.uri.fsPath, relativeDocTarget);
     try {
       // 1. Source Loading
+      // sourceFiles are already relative to this.workspaceFolder.uri.fsPath
       const sourceContents = await this.loadSourceFiles(sourceFiles);
 
       // 2. Context Gathering
@@ -41,12 +49,12 @@ export class DocGenerator {
       if (await this.fileExists(absoluteDocTarget)) {
         currentContent = await this.readFile(absoluteDocTarget);
       } else {
-        currentContent = await this.generateSkeleton(docTarget);
+        currentContent = await this.generateSkeleton(relativeDocTarget);
       }
 
       // 4. Prompt Construction
       const systemInstruction = await this.renderTemplate("systemInstruction", {
-        docTarget,
+        docTarget: relativeDocTarget,
         gitContext,
       });
 
@@ -54,7 +62,7 @@ export class DocGenerator {
         sourceContents,
         contextContents,
         currentContent,
-        docTarget,
+        docTarget: relativeDocTarget,
         gitContext,
       });
 
@@ -72,11 +80,12 @@ export class DocGenerator {
     const contents: string[] = [];
     for (const filePath of filePaths) {
       try {
+        // Resolve path relative to THIS workspace folder
         const absolutePath = path.resolve(this.workspaceFolder.uri.fsPath, filePath);
         const content = await this.readFile(absolutePath);
         contents.push(`## ${filePath}\n\n\`\`\`\n${content}\n\`\`\`\n`);
       } catch (error) {
-        this.logger.warn(`Failed to load source file ${filePath}: ${error}`);
+        this.logger.warn(`Failed to load source file ${filePath} in ${this.workspaceFolder.name}: ${error}`);
       }
     }
     return contents;
@@ -86,9 +95,34 @@ export class DocGenerator {
     const contents: string[] = [];
     for (const filePath of this.config.contextFiles) {
       try {
-        const absolutePath = path.resolve(this.workspaceFolder.uri.fsPath, filePath);
-        const content = await this.readFile(absolutePath);
-        contents.push(`## ${filePath}\n\n${content}\n`);
+        // Multi-root handling: try to resolve path against all workspace folders
+        let absolutePath: string | undefined;
+
+        if (path.isAbsolute(filePath)) {
+          absolutePath = filePath;
+        } else {
+          // Check if it starts with any workspace folder name
+          const folders = vscode.workspace.workspaceFolders || [];
+          for (const folder of folders) {
+            const prefix = folder.name + "/";
+            if (filePath.startsWith(prefix)) {
+              absolutePath = path.resolve(folder.uri.fsPath, filePath.substring(prefix.length));
+              break;
+            }
+          }
+
+          // Fallback to relative to current folder
+          if (!absolutePath) {
+            absolutePath = path.resolve(this.workspaceFolder.uri.fsPath, filePath);
+          }
+        }
+
+        if (fs.existsSync(absolutePath)) {
+          const content = await this.readFile(absolutePath);
+          contents.push(`## ${filePath}\n\n${content}\n`);
+        } else {
+          this.logger.warn(`Context file not found: ${absolutePath}`);
+        }
       } catch (error) {
         this.logger.warn(`Failed to load context file ${filePath}: ${error}`);
       }
@@ -119,8 +153,19 @@ export class DocGenerator {
       return localPath;
     }
 
-    // Internal default
-    return path.join(__dirname, "..", "templates", `${templateName}.hbs`);
+    // Internal fallback: search in out/templates and src/templates
+    const internalPaths = [
+      path.join(__dirname, "..", "templates", `${templateName}.hbs`),
+      path.join(__dirname, "..", "..", "src", "templates", `${templateName}.hbs`), // Fallback for dev mode
+    ];
+
+    for (const internalPath of internalPaths) {
+      if (fs.existsSync(internalPath)) {
+        return internalPath;
+      }
+    }
+
+    throw new Error(`Template ${templateName} not found in internal paths: ${internalPaths.join(", ")}`);
   }
 
   private async readFile(filePath: string): Promise<string> {

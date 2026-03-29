@@ -7,6 +7,7 @@ import { Logger } from "./utils/logger";
 
 let gitHandler: GitHandler | undefined;
 let logger: Logger;
+const lastCommits = new Map<number, string>();
 
 export function activate(context: vscode.ExtensionContext) {
   // Create output channel for the extension
@@ -32,20 +33,53 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(initDisposable, syncDisposable, outputChannel);
 
-  // Listen for Git events (if Git extension is active)
-  if (gitExtension && gitExtension.isActive) {
-    const gitApi = gitExtension.exports.getAPI(1);
-    gitApi.repositories.forEach((repo: any, index: number) => {
-      context.subscriptions.push(
-        repo.state.onDidChange(() => {
-          // Trigger sync on commit for this specific repo
-          if (repo.state.HEAD?.commit) {
-            syncDocs(index);
-          }
-        }),
-      );
-    });
+  // Listen for Git events (if Git extension is available)
+  if (gitExtension) {
+    if (gitExtension.isActive) {
+      setupGitListeners(context);
+    } else {
+      gitExtension.activate().then(() => setupGitListeners(context));
+    }
   }
+}
+
+function setupGitListeners(context: vscode.ExtensionContext) {
+  const gitExtension = vscode.extensions.getExtension("vscode.git");
+  if (!gitExtension) return;
+
+  const gitApi = gitExtension.exports.getAPI(1);
+
+  // Listen for existing repositories
+  gitApi.repositories.forEach((repo: any, index: number) => {
+    registerRepoListener(repo, index, context);
+  });
+
+  // Listen for new repositories
+  context.subscriptions.push(
+    gitApi.onDidOpenRepository((repo: any) => {
+      const index = gitApi.repositories.indexOf(repo);
+      registerRepoListener(repo, index, context);
+    }),
+  );
+}
+
+function registerRepoListener(repo: any, index: number, context: vscode.ExtensionContext) {
+  // Initialize last commit hash
+  if (repo.state.HEAD?.commit) {
+    lastCommits.set(index, repo.state.HEAD.commit);
+  }
+
+  context.subscriptions.push(
+    repo.state.onDidChange(() => {
+      const currentCommit = repo.state.HEAD?.commit;
+      const lastCommit = lastCommits.get(index);
+
+      if (currentCommit && currentCommit !== lastCommit) {
+        lastCommits.set(index, currentCommit);
+        syncDocs(index, true); // true indicates it's a commit trigger
+      }
+    }),
+  );
 }
 
 async function initProject() {
@@ -87,9 +121,23 @@ async function initProject() {
     const defaultTemplates = ["systemInstruction.hbs", "docPrompt.hbs", "docSkeleton.hbs"];
 
     for (const template of defaultTemplates) {
-      const srcUri = vscode.Uri.joinPath(vscode.Uri.file(__dirname), "..", "templates", template);
+      // Find template in out or src
+      const outUri = vscode.Uri.joinPath(vscode.Uri.file(__dirname), "..", "templates", template);
+      const srcUri = vscode.Uri.joinPath(vscode.Uri.file(__dirname), "..", "..", "src", "templates", template);
+
+      let content: Uint8Array;
+      try {
+        content = await vscode.workspace.fs.readFile(outUri);
+      } catch {
+        try {
+          content = await vscode.workspace.fs.readFile(srcUri);
+        } catch (error) {
+          logger.error(`Could not find template ${template} in ${outUri.fsPath} or ${srcUri.fsPath}`);
+          continue;
+        }
+      }
+
       const destUri = vscode.Uri.joinPath(templatesDir, template);
-      const content = await vscode.workspace.fs.readFile(srcUri);
       await vscode.workspace.fs.writeFile(destUri, content);
     }
 
@@ -99,117 +147,117 @@ async function initProject() {
   }
 }
 
-async function syncDocs(repoIndex?: number) {
+async function syncDocs(repoIndex?: number, isCommitTrigger: boolean = false) {
   if (!gitHandler) {
-    vscode.window.showErrorMessage("Auto-Doc: Git extension not available.");
+    logger.error("Auto-Doc: Git extension not available.");
     return;
   }
 
   const repoCount = gitHandler.getRepositoryCount();
   if (repoCount === 0) {
-    vscode.window.showErrorMessage("Auto-Doc: No Git repositories found.");
+    logger.warn("Auto-Doc: No Git repositories found.");
     return;
   }
 
-  // If repoIndex not provided (manual sync), use first repo or let user choose
-  if (repoIndex === undefined) {
-    if (repoCount === 1) {
-      repoIndex = 0;
-    } else {
-      const repoOptions = [];
-      for (let i = 0; i < repoCount; i++) {
-        const root = gitHandler.getRepositoryRoot(i);
-        repoOptions.push({
-          label: `Repository ${i + 1}`,
-          description: root,
-          index: i,
-        });
-      }
-      const selected = await vscode.window.showQuickPick(repoOptions, {
-        placeHolder: "Select the repository to sync",
-      });
-      if (!selected) return;
-      repoIndex = selected.index;
+  // Handle all relevant repositories if no index provided (manual global sync)
+  const targetRepoIndices = repoIndex !== undefined ? [repoIndex] : Array.from({ length: repoCount }, (_, i) => i);
+
+  for (const rIndex of targetRepoIndices) {
+    const repoRoot = gitHandler.getRepositoryRoot(rIndex);
+    if (!repoRoot) continue;
+
+    // Find all workspace folders within this repo
+    const workspaceFoldersInRepo = vscode.workspace.workspaceFolders?.filter((folder) => folder.uri.fsPath.startsWith(repoRoot) || repoRoot.startsWith(folder.uri.fsPath));
+
+    if (!workspaceFoldersInRepo || workspaceFoldersInRepo.length === 0) {
+      logger.warn(`Auto-Doc: No workspace folders found for repository at ${repoRoot}`);
+      continue;
     }
-  }
 
-  const repoRoot = gitHandler.getRepositoryRoot(repoIndex);
-  if (!repoRoot) {
-    vscode.window.showErrorMessage("Auto-Doc: Could not determine repository root.");
-    return;
-  }
-
-  // Find the corresponding workspace folder
-  const workspaceFolder = vscode.workspace.workspaceFolders?.find((folder) => repoRoot.startsWith(folder.uri.fsPath));
-  if (!workspaceFolder) {
-    vscode.window.showErrorMessage("Auto-Doc: Repository root not in workspace folders.");
-    return;
-  }
-
-  vscode.window.showInformationMessage(`Auto-Doc: Analyzing changes in ${workspaceFolder.name}...`);
-
-  try {
-    const config = Config.load();
-    const changedFiles = gitHandler.getChangedFiles(repoIndex);
-    const gitContext = gitHandler.getCommitContext(repoIndex);
+    const changedFiles = isCommitTrigger ? await gitHandler.getCommitChanges(rIndex) : gitHandler.getChangedFiles(rIndex);
 
     if (!changedFiles.length) {
-      vscode.window.showInformationMessage("Auto-Doc: No changes detected.");
-      return;
+      logger.log(`Auto-Doc: No changes detected in repository ${repoRoot}.`);
+      continue;
     }
 
-    // Filter to relative paths from repo root
-    const relativeChangedFiles = changedFiles.map((file) => (file.startsWith(repoRoot) ? file.substring(repoRoot.length + 1) : file));
+    const gitContext = gitHandler.getCommitContext(rIndex);
 
-    // Router Logic
-    const docUpdates: { [doc: string]: string[] } = {};
+    // Process each workspace folder separately to avoid cross-pollution
+    for (const workspaceFolder of workspaceFoldersInRepo) {
+      logger.log(`Analyzing changes in folder: ${workspaceFolder.name}...`);
 
-    if (config.mappings) {
-      for (const changedFile of relativeChangedFiles) {
-        for (const mapping of config.mappings) {
-          const sourceGlob = mapping.source;
-          const targetDoc = mapping.doc;
+      const config = Config.load(workspaceFolder.uri);
 
-          if (minimatch(changedFile, sourceGlob)) {
-            // Check exclusions
-            let isExcluded = false;
-            if (mapping.exclude) {
-              for (const exclude of mapping.exclude) {
-                if (minimatch(changedFile, exclude)) {
-                  isExcluded = true;
-                  break;
-                }
-              }
+      // Filter files to those within this specific workspace folder
+      const folderFiles = changedFiles.filter((file) => file.startsWith(workspaceFolder.uri.fsPath));
+      if (folderFiles.length === 0) {
+        logger.log(`Auto-Doc: No relevant changes for folder ${workspaceFolder.name}.`);
+        continue;
+      }
+
+      // Make paths relative to the workspace folder for mapping and generation
+      const relativeChangedFiles = folderFiles.map((file) => path.relative(workspaceFolder.uri.fsPath, file));
+
+      // Router Logic
+      const docUpdates: { [doc: string]: string[] } = {};
+
+      if (config.mappings) {
+        for (const changedFile of relativeChangedFiles) {
+          for (const mapping of config.mappings) {
+            const sourceGlob = mapping.source;
+            const targetDoc = mapping.doc;
+
+            // Strip folder name if mapping is folder-prefixed
+            let relativeSourceGlob = sourceGlob;
+            const folderPrefix = workspaceFolder.name + "/";
+            if (sourceGlob.startsWith(folderPrefix)) {
+              relativeSourceGlob = sourceGlob.substring(folderPrefix.length);
             }
 
-            if (!isExcluded) {
-              if (!docUpdates[targetDoc]) {
-                docUpdates[targetDoc] = [];
+            if (minimatch(changedFile, relativeSourceGlob)) {
+              // Check exclusions
+              let isExcluded = false;
+              if (mapping.exclude) {
+                for (const exclude of mapping.exclude) {
+                  let relativeExclude = exclude;
+                  if (exclude.startsWith(folderPrefix)) {
+                    relativeExclude = exclude.substring(folderPrefix.length);
+                  }
+                  if (minimatch(changedFile, relativeExclude)) {
+                    isExcluded = true;
+                    break;
+                  }
+                }
               }
-              docUpdates[targetDoc].push(changedFile);
-              break; // Priority rule
+
+              if (!isExcluded) {
+                if (!docUpdates[targetDoc]) {
+                  docUpdates[targetDoc] = [];
+                }
+                docUpdates[targetDoc].push(changedFile);
+                break; // Use the first matching mapping for this file
+              }
             }
           }
         }
       }
-    }
 
-    if (Object.keys(docUpdates).length === 0) {
-      vscode.window.showInformationMessage("Auto-Doc: No relevant changes detected based on mappings.");
-      return;
-    }
+      if (Object.keys(docUpdates).length === 0) {
+        logger.log(`Auto-Doc: No relevant changes for ${workspaceFolder.name} based on mappings.`);
+        continue;
+      }
 
-    // Execute Updates
-    const generator = new DocGenerator(config, workspaceFolder, logger);
-    for (const [docTarget, sources] of Object.entries(docUpdates)) {
-      vscode.window.showInformationMessage(`Auto-Doc: Updating ${docTarget} with sources: ${sources.join(", ")}`);
-      await generator.updateDocs(sources, docTarget, gitContext);
+      // Execute Updates for this folder
+      const generator = new DocGenerator(config, workspaceFolder, logger);
+      for (const [docPath, sourceFiles] of Object.entries(docUpdates)) {
+        logger.log(`[${workspaceFolder.name}] Updating ${docPath} with changes from: ${sourceFiles.join(", ")}`);
+        await generator.updateDocs(sourceFiles, docPath, gitContext);
+      }
     }
-
-    vscode.window.showInformationMessage("Auto-Doc: Documentation updated!");
-  } catch (error) {
-    vscode.window.showErrorMessage(`Auto-Doc: Error during sync - ${error}`);
   }
+
+  logger.log("Auto-Doc: Documentation sync complete!");
 }
 
 export function deactivate() {}

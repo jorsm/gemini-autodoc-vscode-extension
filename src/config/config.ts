@@ -19,8 +19,8 @@ export interface Config {
 }
 
 export class ConfigLoader {
-  static load(): Config {
-    const config = vscode.workspace.getConfiguration("autodoc");
+  static load(scope?: vscode.ConfigurationScope): Config {
+    const config = vscode.workspace.getConfiguration("autodoc", scope);
 
     return {
       model: config.get("model", "gemini-3-flash-preview"),

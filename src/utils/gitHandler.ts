@@ -36,6 +36,24 @@ export class GitHandler {
     }
   }
 
+  async getCommitChanges(repoIndex: number = 0, hash?: string): Promise<string[]> {
+    if (!this.gitApi?.repositories[repoIndex]) {
+      return [];
+    }
+
+    const repo = this.gitApi.repositories[repoIndex];
+    try {
+      // If no hash provided, use HEAD
+      const ref = hash || "HEAD";
+      // Diff HEAD with its parent to get changes in the latest commit
+      const changes = await repo.diffBetween(`${ref}~1`, ref);
+      return changes.map((change: any) => change.uri.fsPath);
+    } catch (error) {
+      this.logger.error(`Error getting commit changes: ${error}`);
+      return [];
+    }
+  }
+
   getCommitContext(repoIndex: number = 0): GitContext | undefined {
     if (!this.gitApi?.repositories[repoIndex]) {
       return undefined;
