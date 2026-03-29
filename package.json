@@ -1,6 +1,7 @@
 {
-  "name": "autodoc-vscode",
+  "name": "gemini-autodoc",
   "displayName": "Auto-Doc VS Code",
+  "publisher": "jorsm",
   "description": "Intelligent AI agent that watches your commits and automatically updates documentation.",
   "version": "0.0.1",
   "engines": {
