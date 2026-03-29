@@ -8,7 +8,7 @@ import { Logger } from "./utils/logger";
 
 let gitHandler: GitHandler | undefined;
 let logger: Logger;
-const lastCommits = new Map<number, string>();
+const lastCommits = new Map<string, string>();
 
 export function activate(context: vscode.ExtensionContext) {
   // Create output channel for the extension
@@ -53,37 +53,49 @@ function setupGitListeners(context: vscode.ExtensionContext) {
   const gitApi = gitExtension.exports.getAPI(1);
 
   // Listen for existing repositories
-  gitApi.repositories.forEach((repo: any, index: number) => {
-    registerRepoListener(repo, index, context);
+  gitApi.repositories.forEach((repo: any) => {
+    registerRepoListener(repo, context);
   });
 
   // Listen for new repositories
   context.subscriptions.push(
     gitApi.onDidOpenRepository((repo: any) => {
-      const index = gitApi.repositories.indexOf(repo);
-      registerRepoListener(repo, index, context);
+      registerRepoListener(repo, context);
     }),
   );
 }
 
-function registerRepoListener(repo: any, index: number, context: vscode.ExtensionContext) {
+function registerRepoListener(repo: any, context: vscode.ExtensionContext) {
+  const repoUri = repo.rootUri.toString();
+
   // Initialize last commit hash
   if (repo.state.HEAD?.commit) {
-    lastCommits.set(index, repo.state.HEAD.commit);
+    lastCommits.set(repoUri, repo.state.HEAD.commit);
     logger.log(`Initialized repo listener for ${repo.rootUri.fsPath} at commit ${repo.state.HEAD.commit}`);
   } else {
-    logger.log(`Initialized repo listener for ${repo.rootUri.fsPath} (no commit yet)`);
+    logger.log(`Initialized repo listener for ${repo.rootUri.fsPath} (waiting for Git to resolve HEAD)`);
   }
 
   context.subscriptions.push(
     repo.state.onDidChange(() => {
       const currentCommit = repo.state.HEAD?.commit;
-      const lastCommit = lastCommits.get(index);
+      const lastCommit = lastCommits.get(repoUri);
 
       if (currentCommit && currentCommit !== lastCommit) {
-        lastCommits.set(index, currentCommit);
-        logger.log(`New commit detected in ${repo.rootUri.fsPath}: ${currentCommit}. Triggering sync.`);
-        syncDocs(index, true); // true indicates it's a commit trigger
+        // Find the index of this repo for the handler
+        const gitApi = vscode.extensions.getExtension("vscode.git")?.exports.getAPI(1);
+        const index = gitApi?.repositories.indexOf(repo);
+
+        lastCommits.set(repoUri, currentCommit);
+
+        // Only trigger sync if we actually had a previous commit recorded
+        // (prevents trigger on initial Git resolution during startup)
+        if (lastCommit !== undefined) {
+          logger.log(`New commit detected in ${repo.rootUri.fsPath}: ${currentCommit}. Triggering sync.`);
+          syncDocs(index, true); // true indicates it's a commit trigger
+        } else {
+          logger.log(`Git resolved HEAD for ${repo.rootUri.fsPath}: ${currentCommit}. Skipping initial sync.`);
+        }
       }
     }),
   );
