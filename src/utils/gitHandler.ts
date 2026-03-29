@@ -22,22 +22,28 @@ export class GitHandler {
   }
 
   getChangedFiles(repoIndex: number = 0): string[] {
+    this.logger.log(`[GitHandler] Getting changed files for repo index ${repoIndex}.`);
     if (!this.gitApi?.repositories[repoIndex]) {
+      this.logger.warn(`[GitHandler] No repository found at index ${repoIndex}.`);
       return [];
     }
 
     const repo = this.gitApi.repositories[repoIndex];
     try {
       const changes = repo.state.workingTreeChanges || [];
-      return changes.filter((change: any) => change.status !== 4).map((change: any) => change.uri.fsPath);
+      const changedFiles = changes.filter((change: any) => change.status !== 4).map((change: any) => change.uri.fsPath);
+      this.logger.log(`[GitHandler] Found ${changedFiles.length} changed files in working tree for ${repo.rootUri.fsPath}.`);
+      return changedFiles;
     } catch (error) {
-      this.logger.error(`Error getting changed files: ${error}`);
+      this.logger.error(`[GitHandler] Error getting changed files: ${error}`);
       return [];
     }
   }
 
   async getCommitChanges(repoIndex: number = 0, hash?: string): Promise<string[]> {
+    this.logger.log(`[GitHandler] Getting commit changes for repo index ${repoIndex}, hash: ${hash || "HEAD"}.`);
     if (!this.gitApi?.repositories[repoIndex]) {
+      this.logger.warn(`[GitHandler] No repository found at index ${repoIndex}.`);
       return [];
     }
 
@@ -46,10 +52,13 @@ export class GitHandler {
       // If no hash provided, use HEAD
       const ref = hash || "HEAD";
       // Diff HEAD with its parent to get changes in the latest commit
+      this.logger.log(`[GitHandler] Dashing diff between ${ref}~1 and ${ref} for ${repo.rootUri.fsPath}.`);
       const changes = await repo.diffBetween(`${ref}~1`, ref);
-      return changes.map((change: any) => change.uri.fsPath);
+      const changedFiles = changes.map((change: any) => change.uri.fsPath);
+      this.logger.log(`[GitHandler] Found ${changedFiles.length} changed files in commit ${ref} for ${repo.rootUri.fsPath}.`);
+      return changedFiles;
     } catch (error) {
-      this.logger.error(`Error getting commit changes: ${error}`);
+      this.logger.error(`[GitHandler] Error getting commit changes: ${error}`);
       return [];
     }
   }

@@ -24,10 +24,12 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Register commands
   let initDisposable = vscode.commands.registerCommand("autodoc.init", async () => {
+    logger.log("Command autodoc.init executed.");
     await initProject();
   });
 
   let syncDisposable = vscode.commands.registerCommand("autodoc.sync", async () => {
+    logger.log("Command autodoc.sync executed.");
     await syncDocs();
   });
 
@@ -67,6 +69,9 @@ function registerRepoListener(repo: any, index: number, context: vscode.Extensio
   // Initialize last commit hash
   if (repo.state.HEAD?.commit) {
     lastCommits.set(index, repo.state.HEAD.commit);
+    logger.log(`Initialized repo listener for ${repo.rootUri.fsPath} at commit ${repo.state.HEAD.commit}`);
+  } else {
+    logger.log(`Initialized repo listener for ${repo.rootUri.fsPath} (no commit yet)`);
   }
 
   context.subscriptions.push(
@@ -76,6 +81,7 @@ function registerRepoListener(repo: any, index: number, context: vscode.Extensio
 
       if (currentCommit && currentCommit !== lastCommit) {
         lastCommits.set(index, currentCommit);
+        logger.log(`New commit detected in ${repo.rootUri.fsPath}: ${currentCommit}. Triggering sync.`);
         syncDocs(index, true); // true indicates it's a commit trigger
       }
     }),
@@ -83,10 +89,12 @@ function registerRepoListener(repo: any, index: number, context: vscode.Extensio
 }
 
 async function initProject() {
+  logger.log("Initializing project...");
   vscode.window.showInformationMessage("Auto-Doc: Initializing project...");
 
   const workspaceFolders = vscode.workspace.workspaceFolders;
   if (!workspaceFolders || workspaceFolders.length === 0) {
+    logger.error("No workspace folder open.");
     vscode.window.showErrorMessage("No workspace folder open.");
     return;
   }
@@ -96,6 +104,7 @@ async function initProject() {
   if (workspaceFolders.length === 1) {
     targetFolder = workspaceFolders[0];
   } else {
+    logger.log("Multiple workspace folders found. Asking user to select one.");
     const selected = await vscode.window.showQuickPick(
       workspaceFolders.map((folder) => ({
         label: folder.name,
@@ -105,17 +114,20 @@ async function initProject() {
       { placeHolder: "Select the workspace folder to initialize Auto-Doc" },
     );
     if (!selected) {
+      logger.log("Initialization cancelled by user (folder selection).");
       return;
     }
     targetFolder = selected.folder;
   }
 
+  logger.log(`Target folder for initialization: ${targetFolder.uri.fsPath}`);
   const autodocDir = vscode.Uri.joinPath(targetFolder.uri, ".autodoc");
   const templatesDir = vscode.Uri.joinPath(autodocDir, "templates");
 
   try {
     await vscode.workspace.fs.createDirectory(autodocDir);
     await vscode.workspace.fs.createDirectory(templatesDir);
+    logger.log(`Created directories: ${autodocDir.fsPath}, ${templatesDir.fsPath}`);
 
     // Copy default templates
     const defaultTemplates = ["systemInstruction.hbs", "docPrompt.hbs", "docSkeleton.hbs"];
@@ -128,9 +140,11 @@ async function initProject() {
       let content: Uint8Array;
       try {
         content = await vscode.workspace.fs.readFile(outUri);
+        logger.log(`Loaded template ${template} from ${outUri.fsPath}`);
       } catch {
         try {
           content = await vscode.workspace.fs.readFile(srcUri);
+          logger.log(`Loaded template ${template} from ${srcUri.fsPath}`);
         } catch (error) {
           logger.error(`Could not find template ${template} in ${outUri.fsPath} or ${srcUri.fsPath}`);
           continue;
@@ -139,15 +153,19 @@ async function initProject() {
 
       const destUri = vscode.Uri.joinPath(templatesDir, template);
       await vscode.workspace.fs.writeFile(destUri, content);
+      logger.log(`Copied template ${template} to ${destUri.fsPath}`);
     }
 
+    logger.log("Auto-Doc: Project initialization complete!");
     vscode.window.showInformationMessage("Auto-Doc: Project initialized!");
   } catch (error) {
+    logger.error(`Auto-Doc: Initialization failed - ${error}`);
     vscode.window.showErrorMessage(`Auto-Doc: Initialization failed - ${error}`);
   }
 }
 
 async function syncDocs(repoIndex?: number, isCommitTrigger: boolean = false) {
+  logger.log(`Syncing docs (repoIndex: ${repoIndex !== undefined ? repoIndex : "all"}, isCommitTrigger: ${isCommitTrigger})`);
   if (!gitHandler) {
     logger.error("Auto-Doc: Git extension not available.");
     return;
@@ -164,7 +182,11 @@ async function syncDocs(repoIndex?: number, isCommitTrigger: boolean = false) {
 
   for (const rIndex of targetRepoIndices) {
     const repoRoot = gitHandler.getRepositoryRoot(rIndex);
-    if (!repoRoot) continue;
+    if (!repoRoot) {
+      logger.log(`Repository with index ${rIndex} not found or has no root.`);
+      continue;
+    }
+    logger.log(`Processing repository: ${repoRoot}`);
 
     // Find all workspace folders within this repo
     const workspaceFoldersInRepo = vscode.workspace.workspaceFolders?.filter((folder) => folder.uri.fsPath.startsWith(repoRoot) || repoRoot.startsWith(folder.uri.fsPath));
@@ -173,6 +195,7 @@ async function syncDocs(repoIndex?: number, isCommitTrigger: boolean = false) {
       logger.warn(`Auto-Doc: No workspace folders found for repository at ${repoRoot}`);
       continue;
     }
+    logger.log(`Found ${workspaceFoldersInRepo.length} workspace folders in this repository.`);
 
     const changedFiles = isCommitTrigger ? await gitHandler.getCommitChanges(rIndex) : gitHandler.getChangedFiles(rIndex);
 
@@ -180,14 +203,19 @@ async function syncDocs(repoIndex?: number, isCommitTrigger: boolean = false) {
       logger.log(`Auto-Doc: No changes detected in repository ${repoRoot}.`);
       continue;
     }
+    logger.log(`Detected changes in ${changedFiles.length} files in repository ${repoRoot}.`);
 
     const gitContext = gitHandler.getCommitContext(rIndex);
+    if (gitContext) {
+      logger.log(`Git context: ${gitContext.hash} by ${gitContext.author} - ${gitContext.message.split("\n")[0]}`);
+    }
 
     // Process each workspace folder separately to avoid cross-pollution
     for (const workspaceFolder of workspaceFoldersInRepo) {
-      logger.log(`Analyzing changes in folder: ${workspaceFolder.name}...`);
+      logger.log(`Analyzing folder: ${workspaceFolder.name}...`);
 
       const config = Config.load(workspaceFolder.uri);
+      logger.log(`Loaded configuration for folder ${workspaceFolder.name}. ${config.mappings.length} mappings found.`);
 
       // Filter files to those within this specific workspace folder
       const folderFiles = changedFiles.filter((file) => file.startsWith(workspaceFolder.uri.fsPath));
@@ -195,6 +223,7 @@ async function syncDocs(repoIndex?: number, isCommitTrigger: boolean = false) {
         logger.log(`Auto-Doc: No relevant changes for folder ${workspaceFolder.name}.`);
         continue;
       }
+      logger.log(`${folderFiles.length} changed files match folder ${workspaceFolder.name}.`);
 
       // Make paths relative to the workspace folder for mapping and generation
       const relativeChangedFiles = folderFiles.map((file) => path.relative(workspaceFolder.uri.fsPath, file));
@@ -236,7 +265,10 @@ async function syncDocs(repoIndex?: number, isCommitTrigger: boolean = false) {
                   docUpdates[targetDoc] = [];
                 }
                 docUpdates[targetDoc].push(changedFile);
+                logger.log(`File ${changedFile} mapped to ${targetDoc} by mapping "${mapping.name || mapping.source}".`);
                 break; // Use the first matching mapping for this file
+              } else {
+                logger.log(`File ${changedFile} matched source ${mapping.source} but was excluded.`);
               }
             }
           }
@@ -247,12 +279,18 @@ async function syncDocs(repoIndex?: number, isCommitTrigger: boolean = false) {
         logger.log(`Auto-Doc: No relevant changes for ${workspaceFolder.name} based on mappings.`);
         continue;
       }
+      logger.log(`Identified updates for ${Object.keys(docUpdates).length} documentation files.`);
 
       // Execute Updates for this folder
       const generator = new DocGenerator(config, workspaceFolder, logger);
       for (const [docPath, sourceFiles] of Object.entries(docUpdates)) {
-        logger.log(`[${workspaceFolder.name}] Updating ${docPath} with changes from: ${sourceFiles.join(", ")}`);
-        await generator.updateDocs(sourceFiles, docPath, gitContext);
+        logger.log(`[${workspaceFolder.name}] Starting update for ${docPath} with changes from: ${sourceFiles.join(", ")}`);
+        try {
+          await generator.updateDocs(sourceFiles, docPath, gitContext);
+          logger.log(`[${workspaceFolder.name}] Finished update for ${docPath}.`);
+        } catch (error) {
+          logger.error(`[${workspaceFolder.name}] Error updating ${docPath}: ${error}`);
+        }
       }
     }
   }

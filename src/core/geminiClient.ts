@@ -20,8 +20,10 @@ export class GeminiClient {
 
   private async initializeClient(): Promise<void> {
     if (!this.client) {
+      this.logger.log("[GeminiClient] Initializing client...");
       if (this.config.googleCloudProjectId) {
         // Use Vertex AI with ADC
+        this.logger.log(`[GeminiClient] Using Vertex AI with project: ${this.config.googleCloudProjectId}, location: ${this.config.googleCloudRegion}`);
         this.client = new GoogleGenAI({
           vertexai: true,
           project: this.config.googleCloudProjectId,
@@ -29,12 +31,15 @@ export class GeminiClient {
         });
       } else {
         // Use API key mode
+        this.logger.log("[GeminiClient] Using API key mode.");
         const key = this.config.apiKey || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
         if (!key) {
+          this.logger.error("[GeminiClient] API key not found in config or environment.");
           throw new Error("Gemini API key not found. Set GEMINI_API_KEY or GOOGLE_API_KEY environment variable, or configure in VS Code settings.");
         }
         this.client = new GoogleGenAI({ apiKey: key });
       }
+      this.logger.log("[GeminiClient] Client initialized successfully.");
     }
   }
 
@@ -46,19 +51,33 @@ export class GeminiClient {
       fullPrompt = `${systemInstruction}\n\n${prompt}`;
     }
 
+    const level = this.mapThinkingLevel(thinkingLevel);
+    this.logger.log(`[GeminiClient] Generating content with model: ${this.config.model}, thinkingLevel: ${level}`);
+
     try {
+      const startTime = Date.now();
       const response = await this.client!.models.generateContent({
         model: this.config.model,
         contents: fullPrompt,
         config: {
           thinkingConfig: {
-            thinkingLevel: this.mapThinkingLevel(thinkingLevel),
+            thinkingLevel: level,
           },
         },
       });
-      return this.cleanMarkdownResponse(response.text || "");
+      const duration = Date.now() - startTime;
+      this.logger.log(`[GeminiClient] API response received in ${duration}ms.`);
+
+      const text = response.text || "";
+      if (!text) {
+        this.logger.warn("[GeminiClient] API returned empty response.");
+      } else {
+        this.logger.log(`[GeminiClient] Received response text (${text.length} characters).`);
+      }
+
+      return this.cleanMarkdownResponse(text);
     } catch (error) {
-      this.logger.error(`Gemini API error: ${error}`);
+      this.logger.error(`[GeminiClient] API error: ${error}`);
       throw new Error(`Gemini API error: ${error}`);
     }
   }
