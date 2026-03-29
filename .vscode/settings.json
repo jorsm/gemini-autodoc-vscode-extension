@@ -7,5 +7,33 @@
         "out": true // set this to false to include "out" folder in search results
     },
     // Turn off tsc task auto detection since we have the necessary tasks as npm scripts
-    "typescript.tsc.autoDetect": "off"
+    "typescript.tsc.autoDetect": "off",
+    "autodoc.model": "gemini-3-flash-preview",
+    "autodoc.thinkingLevel": "high",
+    "autodoc.mappings": [
+        {
+            "name": "Extension Core",
+            "source": "src/core/*.ts",
+            "doc": "docs/core.md"
+        },
+        {
+            "name": "Configuration",
+            "source": "src/config/*.ts",
+            "doc": "docs/config.md"
+        },
+        {
+            "name": "Utilities",
+            "source": "src/utils/*.ts",
+            "doc": "docs/utils.md"
+        },
+        {
+            "name": "Entry Point",
+            "source": "src/extension.ts",
+            "doc": "docs/extension.md"
+        }
+    ],
+    "autodoc.contextFiles": [
+        "README.md",
+        "package.json"
+    ]
 }

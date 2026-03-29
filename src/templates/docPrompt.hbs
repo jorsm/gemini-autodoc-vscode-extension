@@ -1,0 +1,32 @@
+<global_context>
+{{#each contextContents}}
+### {{this}}
+{{/each}}
+</global_context>
+
+{{#if gitContext}}
+<git_context>
+Commit Message:
+{{gitContext.message}}
+</git_context>
+{{/if}}
+
+<source_code>
+{{#each sourceContents}}
+{{this}}
+{{/each}}
+</source_code>
+
+<current_documentation file="{{docTarget}}">
+{{currentContent}}
+</current_documentation>
+
+<instructions>
+Update the `<current_documentation>` to reflect the logic, signatures, and behaviors found in `<source_code>`. Use the `<git_context>` commit message to understand the developer's intent behind the changes.
+
+Rules:
+1. Integrate the necessary updates seamlessly into the existing content.
+2. Leave all unrelated sections completely unchanged.
+3. Do not summarize or remove existing valid information.
+4. Output the entire updated Markdown file.
+</instructions>
