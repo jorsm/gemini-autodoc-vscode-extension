@@ -38,11 +38,13 @@ export class DocGenerator {
     }
 
     const absoluteDocTarget = path.resolve(this.workspaceFolder.uri.fsPath, relativeDocTarget);
+    const docDir = path.dirname(relativeDocTarget);
+
     try {
       // 1. Source Loading
       // sourceFiles are already relative to this.workspaceFolder.uri.fsPath
       this.logger.log(`[DocGenerator] Loading ${sourceFiles.length} source files...`);
-      const sourceContents = await this.loadSourceFiles(sourceFiles);
+      const sourceContents = await this.loadSourceFiles(sourceFiles, docDir);
       this.logger.log(`[DocGenerator] Successfully loaded ${sourceContents.length} source files.`);
 
       // 2. Context Gathering
@@ -91,7 +93,7 @@ export class DocGenerator {
     }
   }
 
-  private async loadSourceFiles(filePaths: string[]): Promise<string[]> {
+  private async loadSourceFiles(filePaths: string[], docDir: string): Promise<string[]> {
     this.logger.log(`[DocGenerator] Loading ${filePaths.length} source files.`);
     const contents: string[] = [];
     for (const filePath of filePaths) {
@@ -100,7 +102,11 @@ export class DocGenerator {
         const absolutePath = path.resolve(this.workspaceFolder.uri.fsPath, filePath);
         this.logger.log(`[DocGenerator] Reading source file: ${filePath} (absolute: ${absolutePath})`);
         const content = await this.readFile(absolutePath);
-        contents.push(`## ${filePath}\n\n\`\`\`\n${content}\n\`\`\`\n`);
+
+        // Calculate relative path from the documentation file to the source file
+        const relativeSourcePath = path.relative(docDir, filePath);
+
+        contents.push(`## ${filePath}\nTarget Link: ${relativeSourcePath}\n\n\`\`\`\n${content}\n\`\`\`\n`);
       } catch (error) {
         this.logger.warn(`[DocGenerator] Failed to load source file ${filePath} in ${this.workspaceFolder.name}: ${error}`);
       }

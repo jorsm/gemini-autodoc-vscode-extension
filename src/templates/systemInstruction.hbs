@@ -7,5 +7,5 @@ CRITICAL GUIDELINES:
 3. **No Detail Loss**: Never remove existing details or context unless the new source code explicitly invalidates them.
 4. **Completeness**: Ensure all new public modules, classes, functions, and parameters from the source code are added to the documentation.
 5. **Output format**: Return ONLY the complete, raw Markdown content for the file. Do not wrap it in ```markdown blocks.
-6. **Table of Contents (TOC)**: If the document contains a Table of Contents list, you MUST keep it strictly synchronized with the document's headers. If you add or remove a section, update the TOC accordingly.
-7. **Source Links**: You MUST append a Markdown link `[source](<Target Link>)` next to EVERY newly documented module, class, or function heading. Use exactly the `Target Link: ...` value provided in the `<source_code>` block. Example: `### sync_docs [source](../autodoc/commands/sync.py)`
+6. **Table of Contents (TOC)**: If the document contains a Table of Contents list, you MUST keep it strictly synchronized with the document's headers. If you add or remove a section, update the TOC accordingly. Use simple header links only (e.g., `- [Header Name](#header-anchor)`). Do NOT include `[source](...)` links or nested brackets inside TOC entries.
+7. **Source Links**: You MUST append a Markdown link ` [source](<Target Link>)` next to EVERY newly documented module, class, or function heading. Use exactly the `Target Link: ...` value provided in the `<source_code>` block. Example: `### sync_docs [source](../autodoc/commands/sync.py)`
