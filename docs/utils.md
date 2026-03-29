@@ -1,7 +1,7 @@
 # docs/utils.md
 
 > **Overview**
-> Utilities for interacting with the VS Code Git extension, providing access to repository metadata and file change tracking.
+> Utilities for interacting with the VS Code Git extension, providing access to repository metadata and file change tracking, and providing system-wide logging.
 
 ## Table of Contents
 - [Table of Contents](#table-of-contents)
@@ -9,6 +9,7 @@
 - [API Reference](#api-reference)
     - [GitContext](#gitcontext)
     - [GitHandler](#githandler)
+    - [Logger](#logger)
 - [Examples](#examples)
 
 ---
@@ -22,7 +23,9 @@ The `GitHandler` utility serves as a bridge between the Auto-Doc extension and t
 
 ## API Reference
 
-### GitContext [source](../src/utils/gitHandler.ts)
+### GitContext
+[source](../src/utils/gitHandler.ts)
+
 An interface representing the metadata of a specific Git commit.
 
 - `hash`: `string` - The unique identifier for the commit.
@@ -31,7 +34,9 @@ An interface representing the metadata of a specific Git commit.
 - `author_email`: `string` - The email address of the commit author.
 - `date`: `string` - The ISO timestamp of the commit.
 
-### GitHandler [source](../src/utils/gitHandler.ts)
+### GitHandler
+[source](../src/utils/gitHandler.ts)
+
 A class that manages interactions with the `vscode.git` extension.
 
 #### constructor(logger: Logger)
@@ -51,6 +56,23 @@ Returns the total number of repositories discovered by the Git extension in the 
 
 #### getRepositoryRoot(repoPathOrIndex: string | number): string | undefined
 Returns the file system path of the root directory for the repository at the given index or path.
+
+### Logger
+[source](../src/utils/logger.ts)
+
+A class used to manage logging output within the VS Code environment, specifically targeting an output channel with formatted timestamps and severity levels.
+
+#### constructor(outputChannel: vscode.OutputChannel)
+Initializes the logger with a specific VS Code output channel.
+
+#### log(message: string): void
+Appends an info-level message to the output channel, prefixed with a UTC timestamp.
+
+#### warn(message: string): void
+Appends a warning-level message to the output channel, prefixed with a UTC timestamp.
+
+#### error(message: string): void
+Appends an error-level message to the output channel, prefixed with a UTC timestamp.
 
 ## Examples
 *(High-level examples of how to use these utilities will be added here).*

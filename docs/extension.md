@@ -27,32 +27,44 @@ The extension acts as a bridge between the local Git environment and the Gemini-
 
 ## API Reference
 
-### activate [source](../src/extension.ts)
+### activate
+[source](../src/extension.ts)
+
 Initializes the extension's internal state, creates the output channel for logging, and registers the primary command handlers. It also attempts to activate the Git extension to begin monitoring repository changes.
 
 **Parameters:**
 - `context`: `vscode.ExtensionContext` - The extension context provided by VS Code.
 
-### setupGitListeners [source](../src/extension.ts)
+### setupGitListeners
+[source](../src/extension.ts)
+
 Sets up the event listeners for the Git extension. It discovers currently open repositories and registers listeners for any repositories opened in the future.
 
 **Parameters:**
 - `context`: `vscode.ExtensionContext` - The extension context used to manage subscriptions.
 
-### registerRepoListener [source](../src/extension.ts)
+### registerRepoListener
+[source](../src/extension.ts)
+
 Attaches a listener to a specific Git repository's state. It monitors the `HEAD` commit and triggers a documentation sync when a new commit hash is detected.
+- **Trigger Logic**: Respects the `autodoc.triggerOnCommit` configuration. It skips automatic sync if set to `"manual"`, and prompts the user for confirmation if set to `"ask"`.
+- **Initial State**: Prevents triggering on initial Git resolution during startup by only syncing if a previous commit hash was already recorded.
 
 **Parameters:**
 - `repo`: `any` - The Git repository object from the VS Code Git API.
 - `context`: `vscode.ExtensionContext` - The extension context for subscription management.
 
-### initProject [source](../src/extension.ts)
+### initProject
+[source](../src/extension.ts)
+
 An asynchronous function that sets up the necessary infrastructure for Auto-Doc within a workspace folder.
 - Creates the `.autodoc` and `.autodoc/templates` directories.
-- Copies default Handlebars (`.hbs`) templates used for system instructions and document generation.
+- Copies default Handlebars (`.hbs`) templates used for system instructions and document generation (`systemInstruction.hbs`, `docPrompt.hbs`, `docSkeleton.hbs`).
 - Prompts the user to select a workspace folder if multiple are open.
 
-### syncDocs [source](../src/extension.ts)
+### syncDocs
+[source](../src/extension.ts)
+
 The core orchestration function for updating documentation.
 - **Parameters**:
     - `repoIdentifier` (optional): `string | number` - The unique identifier (URI string or index) of the specific repository to sync. If omitted, all repositories are processed.
@@ -62,11 +74,13 @@ The core orchestration function for updating documentation.
     2. Retrieves the Git context (author, hash, message) for the current changes.
     3. Iterates through workspace folders contained within the repository.
     4. Loads workspace-specific configurations.
-    5. Matches changed files against defined mappings (including exclusion rules).
+    5. Matches changed files against defined mappings (including exclusion rules). It uses the first matching mapping for each file and correctly handles folder-prefixed source globs in multi-root setups.
     6. Groups updates by target documentation path.
     7. Invokes the `DocGenerator` for each folder to perform AI-driven updates.
 
-### deactivate [source](../src/extension.ts)
+### deactivate
+[source](../src/extension.ts)
+
 Standard VS Code deactivation hook for cleanup. Currently performs no specific cleanup tasks.
 
 ## Examples
