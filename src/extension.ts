@@ -82,17 +82,13 @@ function registerRepoListener(repo: any, context: vscode.ExtensionContext) {
       const lastCommit = lastCommits.get(repoUri);
 
       if (currentCommit && currentCommit !== lastCommit) {
-        // Find the index of this repo for the handler
-        const gitApi = vscode.extensions.getExtension("vscode.git")?.exports.getAPI(1);
-        const index = gitApi?.repositories.indexOf(repo);
-
         lastCommits.set(repoUri, currentCommit);
 
         // Only trigger sync if we actually had a previous commit recorded
         // (prevents trigger on initial Git resolution during startup)
         if (lastCommit !== undefined) {
           logger.log(`New commit detected in ${repo.rootUri.fsPath}: ${currentCommit}. Triggering sync.`);
-          syncDocs(index, true); // true indicates it's a commit trigger
+          syncDocs(repoUri, true); // Use repoUri instead of unstable index
         } else {
           logger.log(`Git resolved HEAD for ${repo.rootUri.fsPath}: ${currentCommit}. Skipping initial sync.`);
         }
@@ -177,9 +173,9 @@ async function initProject() {
   }
 }
 
-async function syncDocs(repoIndex?: number, isCommitTrigger: boolean = false) {
+async function syncDocs(repoIdentifier?: string | number, isCommitTrigger: boolean = false) {
   try {
-    logger.log(`Syncing docs (repoIndex: ${repoIndex !== undefined ? repoIndex : "all"}, isCommitTrigger: ${isCommitTrigger})`);
+    logger.log(`Syncing docs (repoIdentifier: ${repoIdentifier !== undefined ? repoIdentifier : "all"}, isCommitTrigger: ${isCommitTrigger})`);
     if (!gitHandler) {
       logger.error("Auto-Doc: Git extension not available.");
       return;
@@ -191,13 +187,13 @@ async function syncDocs(repoIndex?: number, isCommitTrigger: boolean = false) {
       return;
     }
 
-    // Handle all relevant repositories if no index provided (manual global sync)
-    const targetRepoIndices = repoIndex !== undefined ? [repoIndex] : Array.from({ length: repoCount }, (_, i) => i);
+    // Handle all relevant repositories if no identifier provided (manual global sync)
+    const targetRepoIdentifiers = repoIdentifier !== undefined ? [repoIdentifier] : Array.from({ length: repoCount }, (_, i) => i);
 
-    for (const rIndex of targetRepoIndices) {
-      const repoRoot = gitHandler.getRepositoryRoot(rIndex);
+    for (const rIdentifier of targetRepoIdentifiers) {
+      const repoRoot = gitHandler.getRepositoryRoot(rIdentifier);
       if (!repoRoot) {
-        logger.log(`Repository with index ${rIndex} not found or has no root.`);
+        logger.log(`Repository for identifier ${rIdentifier} not found or has no root.`);
         continue;
       }
       logger.log(`Processing repository: ${repoRoot}`);
@@ -211,7 +207,7 @@ async function syncDocs(repoIndex?: number, isCommitTrigger: boolean = false) {
       }
       logger.log(`Found ${workspaceFoldersInRepo.length} workspace folders in this repository.`);
 
-      const changedFiles = isCommitTrigger ? await gitHandler.getCommitChanges(rIndex) : gitHandler.getChangedFiles(rIndex);
+      const changedFiles = isCommitTrigger ? await gitHandler.getCommitChanges(rIdentifier) : gitHandler.getChangedFiles(rIdentifier);
 
       if (!changedFiles.length) {
         logger.log(`Auto-Doc: No changes detected in repository ${repoRoot}.`);
@@ -219,7 +215,7 @@ async function syncDocs(repoIndex?: number, isCommitTrigger: boolean = false) {
       }
       logger.log(`Detected changes in ${changedFiles.length} files in repository ${repoRoot}.`);
 
-      const gitContext = gitHandler.getCommitContext(rIndex);
+      const gitContext = gitHandler.getCommitContext(rIdentifier);
       if (gitContext) {
         logger.log(`Git context: ${gitContext.hash} by ${gitContext.author} - ${gitContext.message.split("\n")[0]}`);
       }

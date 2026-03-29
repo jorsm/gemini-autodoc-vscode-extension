@@ -21,14 +21,14 @@ export class GitHandler {
     }
   }
 
-  getChangedFiles(repoIndex: number = 0): string[] {
-    this.logger.log(`[GitHandler] Getting changed files for repo index ${repoIndex}.`);
-    if (!this.gitApi?.repositories[repoIndex]) {
-      this.logger.warn(`[GitHandler] No repository found at index ${repoIndex}.`);
+  getChangedFiles(repoPathOrIndex: string | number = 0): string[] {
+    this.logger.log(`[GitHandler] Getting changed files for ${repoPathOrIndex}.`);
+    const repo = this.getRepository(repoPathOrIndex);
+    if (!repo) {
+      this.logger.warn(`[GitHandler] No repository found for ${repoPathOrIndex}.`);
       return [];
     }
 
-    const repo = this.gitApi.repositories[repoIndex];
     try {
       const changes = repo.state.workingTreeChanges || [];
       const changedFiles = changes.filter((change: any) => change.status !== 4).map((change: any) => change.uri.fsPath);
@@ -40,14 +40,14 @@ export class GitHandler {
     }
   }
 
-  async getCommitChanges(repoIndex: number = 0, hash?: string): Promise<string[]> {
-    this.logger.log(`[GitHandler] Getting commit changes for repo index ${repoIndex}, hash: ${hash || "HEAD"}.`);
-    if (!this.gitApi?.repositories[repoIndex]) {
-      this.logger.warn(`[GitHandler] No repository found at index ${repoIndex}.`);
+  async getCommitChanges(repoPathOrIndex: string | number = 0, hash?: string): Promise<string[]> {
+    this.logger.log(`[GitHandler] Getting commit changes for ${repoPathOrIndex}, hash: ${hash || "HEAD"}.`);
+    const repo = this.getRepository(repoPathOrIndex);
+    if (!repo) {
+      this.logger.warn(`[GitHandler] No repository found for ${repoPathOrIndex}.`);
       return [];
     }
 
-    const repo = this.gitApi.repositories[repoIndex];
     try {
       // If no hash provided, use HEAD
       const ref = hash || "HEAD";
@@ -63,12 +63,12 @@ export class GitHandler {
     }
   }
 
-  getCommitContext(repoIndex: number = 0): GitContext | undefined {
-    if (!this.gitApi?.repositories[repoIndex]) {
+  getCommitContext(repoPathOrIndex: string | number = 0): GitContext | undefined {
+    const repo = this.getRepository(repoPathOrIndex);
+    if (!repo) {
       return undefined;
     }
 
-    const repo = this.gitApi.repositories[repoIndex];
     try {
       const head = repo.state.HEAD;
       if (!head) return undefined;
@@ -81,7 +81,7 @@ export class GitHandler {
         date: head.date?.toISOString() || "",
       };
     } catch (error) {
-      this.logger.error(`Error getting commit context: ${error}`);
+      this.logger.error(`[GitHandler] Error getting commit context: ${error}`);
       return undefined;
     }
   }
@@ -90,10 +90,16 @@ export class GitHandler {
     return this.gitApi?.repositories.length ?? 0;
   }
 
-  getRepositoryRoot(repoIndex: number): string | undefined {
-    if (!this.gitApi?.repositories[repoIndex]) {
-      return undefined;
+  getRepositoryRoot(repoPathOrIndex: string | number): string | undefined {
+    const repo = this.getRepository(repoPathOrIndex);
+    return repo?.rootUri.fsPath;
+  }
+
+  private getRepository(pathOrIndex: string | number): any {
+    if (typeof pathOrIndex === "number") {
+      return this.gitApi?.repositories[pathOrIndex];
     }
-    return this.gitApi.repositories[repoIndex].rootUri.fsPath;
+
+    return this.gitApi?.repositories.find((r: any) => r.rootUri.fsPath === pathOrIndex || r.rootUri.toString() === pathOrIndex);
   }
 }
