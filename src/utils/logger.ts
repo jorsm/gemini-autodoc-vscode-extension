@@ -7,15 +7,19 @@ export class Logger {
     this.outputChannel = outputChannel;
   }
 
+  private getTimestamp(): string {
+    return new Date().toISOString();
+  }
+
   log(message: string): void {
-    this.outputChannel.appendLine(`[INFO] ${message}`);
+    this.outputChannel.appendLine(`[${this.getTimestamp()}] [INFO] ${message}`);
   }
 
   warn(message: string): void {
-    this.outputChannel.appendLine(`[WARN] ${message}`);
+    this.outputChannel.appendLine(`[${this.getTimestamp()}] [WARN] ${message}`);
   }
 
   error(message: string): void {
-    this.outputChannel.appendLine(`[ERROR] ${message}`);
+    this.outputChannel.appendLine(`[${this.getTimestamp()}] [ERROR] ${message}`);
   }
 }
