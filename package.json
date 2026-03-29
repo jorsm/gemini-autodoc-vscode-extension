@@ -1,0 +1,139 @@
+{
+  "name": "autodoc-vscode",
+  "displayName": "Auto-Doc VS Code",
+  "description": "Intelligent AI agent that watches your commits and automatically updates documentation.",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "autodoc.init",
+        "title": "Auto-Doc: Initialize"
+      },
+      {
+        "command": "autodoc.sync",
+        "title": "Auto-Doc: Sync Documentation"
+      }
+    ],
+    "configuration": {
+      "title": "Auto-Doc",
+      "properties": {
+        "autodoc.model": {
+          "type": "string",
+          "enum": [
+            "gemini-3-flash-preview"
+          ],
+          "default": "gemini-3-flash-preview",
+          "description": "The Gemini model to use for documentation generation."
+        },
+        "autodoc.thinkingLevel": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "default": "high",
+          "description": "The reasoning depth for the AI model."
+        },
+        "autodoc.mappings": {
+          "type": "array",
+          "default": [
+            {
+              "name": "Default",
+              "source": "src/**/*.py",
+              "doc": "docs/reference.md"
+            }
+          ],
+          "description": "Mappings from source files to documentation files.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Name of the mapping."
+              },
+              "source": {
+                "type": "string",
+                "description": "Glob pattern for source files."
+              },
+              "doc": {
+                "type": "string",
+                "description": "Path to the documentation file."
+              },
+              "exclude": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Glob patterns to exclude."
+              }
+            },
+            "required": [
+              "source",
+              "doc"
+            ]
+          }
+        },
+        "autodoc.contextFiles": {
+          "type": "array",
+          "default": [
+            "README.md"
+          ],
+          "description": "Global context files always included in prompts.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "autodoc.apiKey": {
+          "type": "string",
+          "description": "Gemini API key. Leave empty to use environment variable."
+        },
+        "autodoc.googleCloudProjectId": {
+          "type": "string",
+          "description": "Google Cloud Project ID for Vertex AI. If set, uses Vertex AI with ADC instead of API key."
+        },
+        "autodoc.googleCloudRegion": {
+          "type": "string",
+          "default": "global",
+          "description": "Google Cloud region for Vertex AI."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.74.0",
+    "@types/glob": "^8.1.0",
+    "@types/mocha": "^10.0.1",
+    "@types/node": "16.x",
+    "eslint": "^8.28.0",
+    "@typescript-eslint/eslint-plugin": "^5.42.0",
+    "@typescript-eslint/parser": "^5.42.0",
+    "glob": "^8.1.0",
+    "mocha": "^10.1.0",
+    "typescript": "^4.9.4",
+    "@vscode/test-electron": "^2.2.0"
+  },
+  "dependencies": {
+    "@google/genai": "^1.47.0",
+    "handlebars": "^4.7.7",
+    "minimatch": "^5.1.0"
+  }
+}
