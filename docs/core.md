@@ -7,9 +7,9 @@
 - [Table of Contents](#table-of-contents)
 - [Core Concepts](#core-concepts)
 - [API Reference](#api-reference)
-    - [GitContext [source](../src/core/docGenerator.ts)](#gitcontext-sourcesrccoredocgeneratorts)
-    - [DocGenerator [source](../src/core/docGenerator.ts)](#docgenerator-sourcesrccoredocgeneratorts)
-    - [GeminiClient [source](../src/core/geminiClient.ts)](#geminiclient-sourcesrccoregeminiclients)
+    - [GitContext](#gitcontext)
+    - [DocGenerator](#docgenerator)
+    - [GeminiClient](#geminiclient)
 - [Examples](#examples)
 
 ---
