@@ -106,6 +106,16 @@
           "type": "string",
           "default": "global",
           "description": "Google Cloud region for Vertex AI."
+        },
+        "autodoc.triggerOnCommit": {
+          "type": "string",
+          "enum": [
+            "always",
+            "ask",
+            "manual"
+          ],
+          "default": "always",
+          "description": "Control when documentation is updated. 'always': every commit; 'ask': prompt after every commit; 'manual': only when manually running the sync command."
         }
       }
     }
