@@ -1,13 +1,14 @@
 .vscode/**
 .vscode-test/**
 src/**
+docs/**
 playground/**
 .gitignore
+node_modules/**
 .yarnrc
 *.vsix
 **/tsconfig.json
 **/eslint.config.mjs
 **/*.map
-**/*.ts
 **/.vscode-test.*
 out/test/**
