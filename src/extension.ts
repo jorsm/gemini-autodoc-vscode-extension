@@ -1,4 +1,5 @@
 import minimatch from "minimatch";
+import * as path from "path";
 import * as vscode from "vscode";
 import { Config } from "./config/config";
 import { DocGenerator } from "./core/docGenerator";
@@ -165,137 +166,141 @@ async function initProject() {
 }
 
 async function syncDocs(repoIndex?: number, isCommitTrigger: boolean = false) {
-  logger.log(`Syncing docs (repoIndex: ${repoIndex !== undefined ? repoIndex : "all"}, isCommitTrigger: ${isCommitTrigger})`);
-  if (!gitHandler) {
-    logger.error("Auto-Doc: Git extension not available.");
-    return;
-  }
-
-  const repoCount = gitHandler.getRepositoryCount();
-  if (repoCount === 0) {
-    logger.warn("Auto-Doc: No Git repositories found.");
-    return;
-  }
-
-  // Handle all relevant repositories if no index provided (manual global sync)
-  const targetRepoIndices = repoIndex !== undefined ? [repoIndex] : Array.from({ length: repoCount }, (_, i) => i);
-
-  for (const rIndex of targetRepoIndices) {
-    const repoRoot = gitHandler.getRepositoryRoot(rIndex);
-    if (!repoRoot) {
-      logger.log(`Repository with index ${rIndex} not found or has no root.`);
-      continue;
-    }
-    logger.log(`Processing repository: ${repoRoot}`);
-
-    // Find all workspace folders within this repo
-    const workspaceFoldersInRepo = vscode.workspace.workspaceFolders?.filter((folder) => folder.uri.fsPath.startsWith(repoRoot) || repoRoot.startsWith(folder.uri.fsPath));
-
-    if (!workspaceFoldersInRepo || workspaceFoldersInRepo.length === 0) {
-      logger.warn(`Auto-Doc: No workspace folders found for repository at ${repoRoot}`);
-      continue;
-    }
-    logger.log(`Found ${workspaceFoldersInRepo.length} workspace folders in this repository.`);
-
-    const changedFiles = isCommitTrigger ? await gitHandler.getCommitChanges(rIndex) : gitHandler.getChangedFiles(rIndex);
-
-    if (!changedFiles.length) {
-      logger.log(`Auto-Doc: No changes detected in repository ${repoRoot}.`);
-      continue;
-    }
-    logger.log(`Detected changes in ${changedFiles.length} files in repository ${repoRoot}.`);
-
-    const gitContext = gitHandler.getCommitContext(rIndex);
-    if (gitContext) {
-      logger.log(`Git context: ${gitContext.hash} by ${gitContext.author} - ${gitContext.message.split("\n")[0]}`);
+  try {
+    logger.log(`Syncing docs (repoIndex: ${repoIndex !== undefined ? repoIndex : "all"}, isCommitTrigger: ${isCommitTrigger})`);
+    if (!gitHandler) {
+      logger.error("Auto-Doc: Git extension not available.");
+      return;
     }
 
-    // Process each workspace folder separately to avoid cross-pollution
-    for (const workspaceFolder of workspaceFoldersInRepo) {
-      logger.log(`Analyzing folder: ${workspaceFolder.name}...`);
+    const repoCount = gitHandler.getRepositoryCount();
+    if (repoCount === 0) {
+      logger.warn("Auto-Doc: No Git repositories found.");
+      return;
+    }
 
-      const config = Config.load(workspaceFolder.uri);
-      logger.log(`Loaded configuration for folder ${workspaceFolder.name}. ${config.mappings.length} mappings found.`);
+    // Handle all relevant repositories if no index provided (manual global sync)
+    const targetRepoIndices = repoIndex !== undefined ? [repoIndex] : Array.from({ length: repoCount }, (_, i) => i);
 
-      // Filter files to those within this specific workspace folder
-      const folderFiles = changedFiles.filter((file) => file.startsWith(workspaceFolder.uri.fsPath));
-      if (folderFiles.length === 0) {
-        logger.log(`Auto-Doc: No relevant changes for folder ${workspaceFolder.name}.`);
+    for (const rIndex of targetRepoIndices) {
+      const repoRoot = gitHandler.getRepositoryRoot(rIndex);
+      if (!repoRoot) {
+        logger.log(`Repository with index ${rIndex} not found or has no root.`);
         continue;
       }
-      logger.log(`${folderFiles.length} changed files match folder ${workspaceFolder.name}.`);
+      logger.log(`Processing repository: ${repoRoot}`);
 
-      // Make paths relative to the workspace folder for mapping and generation
-      const relativeChangedFiles = folderFiles.map((file) => path.relative(workspaceFolder.uri.fsPath, file));
+      // Find all workspace folders within this repo
+      const workspaceFoldersInRepo = vscode.workspace.workspaceFolders?.filter((folder) => folder.uri.fsPath.startsWith(repoRoot) || repoRoot.startsWith(folder.uri.fsPath));
 
-      // Router Logic
-      const docUpdates: { [doc: string]: string[] } = {};
+      if (!workspaceFoldersInRepo || workspaceFoldersInRepo.length === 0) {
+        logger.warn(`Auto-Doc: No workspace folders found for repository at ${repoRoot}`);
+        continue;
+      }
+      logger.log(`Found ${workspaceFoldersInRepo.length} workspace folders in this repository.`);
 
-      if (config.mappings) {
-        for (const changedFile of relativeChangedFiles) {
-          for (const mapping of config.mappings) {
-            const sourceGlob = mapping.source;
-            const targetDoc = mapping.doc;
+      const changedFiles = isCommitTrigger ? await gitHandler.getCommitChanges(rIndex) : gitHandler.getChangedFiles(rIndex);
 
-            // Strip folder name if mapping is folder-prefixed
-            let relativeSourceGlob = sourceGlob;
-            const folderPrefix = workspaceFolder.name + "/";
-            if (sourceGlob.startsWith(folderPrefix)) {
-              relativeSourceGlob = sourceGlob.substring(folderPrefix.length);
-            }
+      if (!changedFiles.length) {
+        logger.log(`Auto-Doc: No changes detected in repository ${repoRoot}.`);
+        continue;
+      }
+      logger.log(`Detected changes in ${changedFiles.length} files in repository ${repoRoot}.`);
 
-            if (minimatch(changedFile, relativeSourceGlob)) {
-              // Check exclusions
-              let isExcluded = false;
-              if (mapping.exclude) {
-                for (const exclude of mapping.exclude) {
-                  let relativeExclude = exclude;
-                  if (exclude.startsWith(folderPrefix)) {
-                    relativeExclude = exclude.substring(folderPrefix.length);
-                  }
-                  if (minimatch(changedFile, relativeExclude)) {
-                    isExcluded = true;
-                    break;
-                  }
-                }
+      const gitContext = gitHandler.getCommitContext(rIndex);
+      if (gitContext) {
+        logger.log(`Git context: ${gitContext.hash} by ${gitContext.author} - ${gitContext.message.split("\n")[0]}`);
+      }
+
+      // Process each workspace folder separately to avoid cross-pollution
+      for (const workspaceFolder of workspaceFoldersInRepo) {
+        logger.log(`Analyzing folder: ${workspaceFolder.name}...`);
+
+        const config = Config.load(workspaceFolder.uri);
+        logger.log(`Loaded configuration for folder ${workspaceFolder.name}. ${config.mappings.length} mappings found.`);
+
+        // Filter files to those within this specific workspace folder
+        const folderFiles = changedFiles.filter((file) => file.startsWith(workspaceFolder.uri.fsPath));
+        if (folderFiles.length === 0) {
+          logger.log(`Auto-Doc: No relevant changes for folder ${workspaceFolder.name}.`);
+          continue;
+        }
+        logger.log(`${folderFiles.length} changed files match folder ${workspaceFolder.name}.`);
+
+        // Make paths relative to the workspace folder for mapping and generation
+        const relativeChangedFiles = folderFiles.map((file) => path.relative(workspaceFolder.uri.fsPath, file));
+
+        // Router Logic
+        const docUpdates: { [doc: string]: string[] } = {};
+
+        if (config.mappings) {
+          for (const changedFile of relativeChangedFiles) {
+            for (const mapping of config.mappings) {
+              const sourceGlob = mapping.source;
+              const targetDoc = mapping.doc;
+
+              // Strip folder name if mapping is folder-prefixed
+              let relativeSourceGlob = sourceGlob;
+              const folderPrefix = workspaceFolder.name + "/";
+              if (sourceGlob.startsWith(folderPrefix)) {
+                relativeSourceGlob = sourceGlob.substring(folderPrefix.length);
               }
 
-              if (!isExcluded) {
-                if (!docUpdates[targetDoc]) {
-                  docUpdates[targetDoc] = [];
+              if (minimatch(changedFile, relativeSourceGlob)) {
+                // Check exclusions
+                let isExcluded = false;
+                if (mapping.exclude) {
+                  for (const exclude of mapping.exclude) {
+                    let relativeExclude = exclude;
+                    if (exclude.startsWith(folderPrefix)) {
+                      relativeExclude = exclude.substring(folderPrefix.length);
+                    }
+                    if (minimatch(changedFile, relativeExclude)) {
+                      isExcluded = true;
+                      break;
+                    }
+                  }
                 }
-                docUpdates[targetDoc].push(changedFile);
-                logger.log(`File ${changedFile} mapped to ${targetDoc} by mapping "${mapping.name || mapping.source}".`);
-                break; // Use the first matching mapping for this file
-              } else {
-                logger.log(`File ${changedFile} matched source ${mapping.source} but was excluded.`);
+
+                if (!isExcluded) {
+                  if (!docUpdates[targetDoc]) {
+                    docUpdates[targetDoc] = [];
+                  }
+                  docUpdates[targetDoc].push(changedFile);
+                  logger.log(`File ${changedFile} mapped to ${targetDoc} by mapping "${mapping.name || mapping.source}".`);
+                  break; // Use the first matching mapping for this file
+                } else {
+                  logger.log(`File ${changedFile} matched source ${mapping.source} but was excluded.`);
+                }
               }
             }
           }
         }
-      }
 
-      if (Object.keys(docUpdates).length === 0) {
-        logger.log(`Auto-Doc: No relevant changes for ${workspaceFolder.name} based on mappings.`);
-        continue;
-      }
-      logger.log(`Identified updates for ${Object.keys(docUpdates).length} documentation files.`);
+        if (Object.keys(docUpdates).length === 0) {
+          logger.log(`Auto-Doc: No relevant changes for ${workspaceFolder.name} based on mappings.`);
+          continue;
+        }
+        logger.log(`Identified updates for ${Object.keys(docUpdates).length} documentation files.`);
 
-      // Execute Updates for this folder
-      const generator = new DocGenerator(config, workspaceFolder, logger);
-      for (const [docPath, sourceFiles] of Object.entries(docUpdates)) {
-        logger.log(`[${workspaceFolder.name}] Starting update for ${docPath} with changes from: ${sourceFiles.join(", ")}`);
-        try {
-          await generator.updateDocs(sourceFiles, docPath, gitContext);
-          logger.log(`[${workspaceFolder.name}] Finished update for ${docPath}.`);
-        } catch (error) {
-          logger.error(`[${workspaceFolder.name}] Error updating ${docPath}: ${error}`);
+        // Execute Updates for this folder
+        const generator = new DocGenerator(config, workspaceFolder, logger);
+        for (const [docPath, sourceFiles] of Object.entries(docUpdates)) {
+          logger.log(`[${workspaceFolder.name}] Starting update for ${docPath} with changes from: ${sourceFiles.join(", ")}`);
+          try {
+            await generator.updateDocs(sourceFiles, docPath, gitContext);
+            logger.log(`[${workspaceFolder.name}] Finished update for ${docPath}.`);
+          } catch (error) {
+            logger.error(`[${workspaceFolder.name}] Error updating ${docPath}: ${error}`);
+          }
         }
       }
     }
-  }
 
-  logger.log("Auto-Doc: Documentation sync complete!");
+    logger.log("Auto-Doc: Documentation sync complete!");
+  } catch (error) {
+    logger.error(`Auto-Doc: Sync failed with unexpected error: ${error}`);
+  }
 }
 
 export function deactivate() {}
