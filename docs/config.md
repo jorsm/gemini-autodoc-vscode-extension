@@ -63,24 +63,58 @@ A utility class responsible for reading and parsing settings from the VS Code wo
 [source](../src/config/config.ts)
 A constant export that aliases `ConfigLoader` for convenient access.
 
+## Detailed Configuration Guide
+
+### Authentication
+Auto-Doc supports two ways to authenticate with Google's Gemini models:
+
+#### 1. Google AI API Key (Standard)
+The simplest way to get started. Obtain a key from [Google AI Studio](https://aistudio.google.com/) and set:
+- `autodoc.apiKey`: Your API key string.
+
+#### 2. Vertex AI (Enterprise/GCP)
+If you prefer using Google Cloud Platform, you can use Vertex AI. This method uses **Application Default Credentials (ADC)**.
+- `autodoc.googleCloudProjectId`: Your GCP Project ID.
+- `autodoc.googleCloudRegion`: (Optional) Defaults to `global`.
+- **Note**: Ensure you have run `gcloud auth application-default login` on your machine, or your environment has the `GOOGLE_APPLICATION_CREDENTIALS` variable set.
+
+---
+
+### Glob Patterns (minimatch)
+Auto-Doc uses the [minimatch](https://www.npmjs.com/package/minimatch) library for all source mapping and exclusion patterns. This ensures powerful and flexible file matching.
+
+**Supported Features:**
+- **Brace Expansion**: `src/**/*.{ts,js}` matches both TypeScript and JavaScript files.
+- **Extended Glob Matching**: `+(errors|utils)/*.ts` matches files in either the `errors` or `utils` directory.
+- **"Globstar" `**` Matching**: `src/**/*.ts` matches all `.ts` files recursively in the `src` directory.
+
+---
+
+### Multi-Root Workspace Support
+Auto-Doc is designed for complex, multi-root environments.
+
+- **Settings Scoping**: You can define different mappings for each workspace folder by using folder-level `settings.json` files.
+- **Path Resolution**: When a commit happens in a repository that spans multiple workspace folders, Auto-Doc correctly identifies which folder a changed file belongs to and applies the appropriate mapping for that folder.
+- **Folder Names**: In multi-root setups, glob patterns are matched against the relative path *within* the workspace folder.
+
+---
+
 ## Examples
 
-### Basic Configuration in settings.json
-Users can configure the extension directly in their VS Code settings:
+### Advanced Multi-Root Vertex AI Setup
+In a multi-root workspace, you might have a folder-specific `.vscode/settings.json`:
 
 ```json
 {
-  "autodoc.model": "gemini-3-flash-preview",
-  "autodoc.thinkingLevel": "high",
+  "autodoc.googleCloudProjectId": "my-enterprise-project",
+  "autodoc.triggerOnCommit": "always",
   "autodoc.mappings": [
     {
-      "name": "Python Source",
-      "source": "src/**/*.py",
-      "doc": "docs/reference.md",
-      "exclude": ["**/tests/**"]
+      "name": "Backend Services",
+      "source": "services/**/!(test)/*.go",
+      "doc": "docs/services.md"
     }
-  ],
-  "autodoc.triggerOnCommit": "ask"
+  ]
 }
 ```
 

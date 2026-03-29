@@ -182,7 +182,8 @@ export class DocGenerator {
 
     // Internal fallback: search in out/templates and src/templates
     const internalPaths = [
-      path.join(__dirname, "..", "templates", `${templateName}.hbs`),
+      path.join(__dirname, "templates", `${templateName}.hbs`), // Bundled mode
+      path.join(__dirname, "..", "templates", `${templateName}.hbs`), // Standard mode
       path.join(__dirname, "..", "..", "src", "templates", `${templateName}.hbs`), // Fallback for dev mode
     ];
 
